@@ -1,0 +1,33 @@
+{
+  "name": "com.pfv.modules.template",
+  "displayName": "Modules Template",
+  "version": "0.1.0",
+  "unity": "2021.1",
+  "unityRelease": "16f1",
+  "description": "Module Template for Unity Package.",
+  "category": "Tool",
+  "type": "tool",
+  "license": "MIT",
+  "author": {
+    "name": "Plácido Fernández-Viagas",
+    "email": "placido.fdez.viagas@gmail.com",
+    "url": ""
+  },
+  "dependencies": {
+    "com.unity.ext.nunit": "1.0.0"
+  },
+  "keywords": [
+    "Modules",
+    "Template",
+    "Tools",
+    "Tool",
+    "Unity"
+  ],
+  "samples": [
+    {
+      "displayName": "Example 1",
+      "description": "This sample is just an example",
+      "path": "Samples~/Example1"
+    }
+  ]
+}
