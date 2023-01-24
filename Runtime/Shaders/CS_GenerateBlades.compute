@@ -1,0 +1,77 @@
+
+#pragma kernel CS_GenerateBladesAmount
+
+#define THREAD_GROUP_SIZE_X 128 
+#define THREAD_GROUP_SIZE_Y 1
+#define THREAD_GROUP_SIZE_Z 1
+
+#include "./IndirectStructs.hlsl"
+
+StructuredBuffer<GrassTriangle> _Triangles;
+StructuredBuffer<GrassVertex> _Vertices;
+
+RWStructuredBuffer<DrawIndirectArgs> _DrawIndirectArgs;
+RWStructuredBuffer<uint> _ComputeIndirectArgs;
+
+ConsumeStructuredBuffer<uint> _VisibleTriangleIndexes;
+AppendStructuredBuffer<BladeSourceData> _BladeSourceData;
+// AppendStructuredBuffer<GrassBladeInstanceData> _GrassInstanceData;
+
+RWStructuredBuffer<uint> _AuxIntBuffer;
+
+uint _BladesPerDensity;
+uint _InterpolateBladeArgsOffset;
+float4 _Time;
+
+[numthreads(THREAD_GROUP_SIZE_X,THREAD_GROUP_SIZE_Y,THREAD_GROUP_SIZE_Z)]
+inline void CS_GenerateBladesAmount (uint3 id : SV_DispatchThreadID)
+{
+
+    // uint index = id.x % _TotalTriangles;
+    uint index = id.x;
+    uint amountOfVisibleTriangles = _AuxIntBuffer[0];
+    if (index >= amountOfVisibleTriangles)
+    {
+        return;
+    }
+    // uint triangleIndex = _VisibleTriangleIndexes[index];
+    uint triangleIndex = _VisibleTriangleIndexes.Consume();
+    GrassTriangle tri = _Triangles[triangleIndex];
+    
+    GrassVertex a = _Vertices[tri.vertexA];
+    GrassVertex b = _Vertices[tri.vertexB];
+    GrassVertex c = _Vertices[tri.vertexC];
+
+    float totalDensity = (a.density + b.density + c.density) / 3.0;
+
+    uint blades = ceil(_BladesPerDensity * totalDensity);
+    // uint blades = 5;
+    uint oldBladeCount = 0;
+    InterlockedAdd(_AuxIntBuffer[1], blades, oldBladeCount);
+    InterlockedAdd(_DrawIndirectArgs[0].instanceCount, blades);
+
+    uint oldGroups = ceil(float(oldBladeCount) / float(THREAD_GROUP_SIZE_X));
+    uint newGroups = ceil(float((oldBladeCount + blades)) / float(THREAD_GROUP_SIZE_X));
+
+    if (newGroups > oldGroups)
+    {
+        InterlockedAdd(_ComputeIndirectArgs[0], newGroups - oldGroups);
+        // InterlockedAdd(_ComputeIndirectArgs[_InterpolateBladeArgsOffset].threadGroupsX, newGroups - oldGroups);
+    }
+    
+    for(uint i = 0; i < blades; i++)
+    {
+        BladeSourceData sourceData =  (BladeSourceData)0;
+        sourceData.triangleIndex = triangleIndex;
+        sourceData.bladeIndexPerTri = i;
+        _BladeSourceData.Append(sourceData);
+
+        // GrassBladeInstanceData instanceData = (GrassBladeInstanceData)0;   
+        // instanceData.batchIndex = 0;
+        // instanceData.normalWS = float3(0.0, 1.0, 0.0);
+        // instanceData.positionWS = a.position;
+        // instanceData.positionWS += float3(sin(_Time.x * 10 + (i * 10)), 0.0, 0.0);
+        // // bladeData.positionWS = a.position;
+        // _GrassInstanceData.Append(instanceData);
+    }
+}

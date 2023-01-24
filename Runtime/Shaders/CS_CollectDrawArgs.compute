@@ -1,0 +1,41 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CS_GPUCulling
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+#define THREAD_GROUP_SIZE_X 128 
+#define THREAD_GROUP_SIZE_Y 1
+#define THREAD_GROUP_SIZE_Z 1
+
+#include "./IndirectStructs.hlsl"
+
+uint _TotalPoints;
+
+StructuredBuffer<DensityPoint> _VisibleDensityPoints;
+AppendStructuredBuffer<IndirectInstanceData> _InstanceData;
+
+
+[numthreads(THREAD_GROUP_SIZE_X,THREAD_GROUP_SIZE_Y,THREAD_GROUP_SIZE_Z)]
+inline void CS_GPUCulling (uint3 id : SV_DispatchThreadID)
+{
+
+    // uint index = id.x + (id.y * _ThreadDimensionX);
+    uint index = id.x;
+    
+    if (index >= _TotalPoints)
+    {
+        return;
+    }
+    
+    // Get the instance AABBData
+    DensityPoint densityPoint = _VisibleDensityPoints[index];
+    IndirectInstanceData instanceData = (IndirectInstanceData)0;
+    uint grassInstances = densityPoint.density;
+    for(uint i = 0 ; i < grassInstances; i++)
+    {
+        instanceData.densityPointIndex = index;
+        _InstanceData.Append(instanceData);
+    }
+
+    
+}

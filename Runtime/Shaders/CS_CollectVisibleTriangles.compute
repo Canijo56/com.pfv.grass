@@ -1,0 +1,59 @@
+
+#pragma kernel CS_CollectVisibleTriangles
+
+#define THREAD_GROUP_SIZE_X 128 
+#define THREAD_GROUP_SIZE_Y 1
+#define THREAD_GROUP_SIZE_Z 1
+
+#include "./IndirectStructs.hlsl"
+
+
+StructuredBuffer<GrassTriangle> _Triangles;
+StructuredBuffer<VertexCullResult> _IsVisiblePerVertex;
+
+RWStructuredBuffer<uint> _ComputeIndirectArgs;
+
+AppendStructuredBuffer<uint> _VisibleTriangleIndexes;
+RWStructuredBuffer<uint> _AuxIntBuffer;
+
+uint _TotalTriangles;
+uint _GenerateBladesArgsOffset;
+
+[numthreads(THREAD_GROUP_SIZE_X,THREAD_GROUP_SIZE_Y,THREAD_GROUP_SIZE_Z)]
+inline void CS_CollectVisibleTriangles (uint3 id : SV_DispatchThreadID)
+{
+
+    uint index = id.x;
+    
+    if (index >= _TotalTriangles)
+    {
+        return;
+    }
+    
+    GrassTriangle tri = _Triangles[index];
+
+    
+    VertexCullResult a = _IsVisiblePerVertex[tri.vertexA];
+    VertexCullResult b = _IsVisiblePerVertex[tri.vertexB];
+    VertexCullResult c = _IsVisiblePerVertex[tri.vertexC];
+    if (a.visible > 0.5 || b.visible > 0.5 || c.visible > 0.5)
+    {
+        _VisibleTriangleIndexes.Append(index);
+        
+        uint oldVisibleCount = 0;
+        InterlockedAdd(_AuxIntBuffer[0], 1, oldVisibleCount);
+        // if (oldVisibleCount % THREAD_GROUP_SIZE_X == 0)
+        // {
+        //     // InterlockedAdd(_ComputeIndirectArgs[_GenerateBladesArgsOffset].threadGroupsX, 1);
+        //     InterlockedAdd(_ComputeIndirectArgs[0], 1);
+        // }
+        int oldGroups = ceil(float(oldVisibleCount) / float(THREAD_GROUP_SIZE_X));
+        int newGroups = ceil((float(oldVisibleCount) + 1) / float(THREAD_GROUP_SIZE_X));
+        
+        if (newGroups > oldGroups)
+        {
+            InterlockedAdd(_ComputeIndirectArgs[_GenerateBladesArgsOffset], newGroups - oldGroups);
+        }
+
+    }
+}

@@ -1,0 +1,110 @@
+
+#pragma kernel CS_InterpolateBlades
+
+#define THREAD_GROUP_SIZE_X 128 
+#define THREAD_GROUP_SIZE_Y 1
+#define THREAD_GROUP_SIZE_Z 1
+
+#include "./IndirectStructs.hlsl"
+StructuredBuffer<GrassTriangle> _Triangles;
+StructuredBuffer<GrassVertex> _Vertices;
+
+ConsumeStructuredBuffer<BladeSourceData> _BladeSourceData;
+AppendStructuredBuffer<GrassBladeInstanceData> _GrassInstanceData;
+
+RWStructuredBuffer<uint> _AuxIntBuffer;
+
+
+const float PHI = 1.61803398874989484820459; // Φ = Golden Ratio 
+
+// Hash function from H. Schechter & R. Bridson, goo.gl/RXiKaH
+uint Hash(uint s)
+{
+    s ^= 2747636419u;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    s ^= s >> 16;
+    s *= 2654435769u;
+    return s;
+}
+
+float gold_noise(in float2 xy, in float seed)
+{
+    return frac(tan(distance(xy*PHI, xy)*seed)*xy.x);
+
+}
+float Random(uint triangleIdx,  uint bladeIdx)
+{
+    return gold_noise(float2(triangleIdx + 1, bladeIdx + 1) * 0.1, 0.5);
+    // return float(Hash(seed)) / 4294967295.0; // 2^32-1
+}
+float Random(uint seed)
+{
+    return float(Hash(seed)) / 4294967295.0; // 2^32-1
+}
+
+// #define NOISE_SEED = 128
+// float Noise(uint x)
+// {
+    //     int n = x * 57 + NOISE_SEED * 131;
+    //     n = (n<<13) ^ n;
+    //     return (1.0 - ( (n * (n * n * 15731 + 789221) +
+    //     1376312589)&0x7fffffff)* 0.000000000931322574615478515625);
+// }
+
+[numthreads(THREAD_GROUP_SIZE_X,THREAD_GROUP_SIZE_Y,THREAD_GROUP_SIZE_Z)]
+inline void CS_InterpolateBlades (uint3 id : SV_DispatchThreadID)
+{
+    
+    uint index = id.x;
+    uint grassInstances = _AuxIntBuffer[1];
+    if (index >= grassInstances ) 
+    {
+        return;
+    }
+    BladeSourceData sourceData = _BladeSourceData.Consume();
+    GrassTriangle tri = _Triangles[sourceData.triangleIndex];
+    
+    GrassVertex a = _Vertices[tri.vertexA];
+    GrassVertex b = _Vertices[tri.vertexB];
+    GrassVertex c = _Vertices[tri.vertexC];
+
+    // float3 w = float3(
+    // Random(sourceData.bladeIndexPerTri * sourceData.triangleIndex),
+    // Random(sourceData.bladeIndexPerTri * 204623 * sourceData.triangleIndex),
+    // Random(sourceData.bladeIndexPerTri * 352229 * sourceData.triangleIndex)
+    // );
+    // float3 w = float3(
+    // Random(sourceData.bladeIndexPerTri, sourceData.triangleIndex),
+    // Random(sourceData.bladeIndexPerTri, 204623 * sourceData.triangleIndex),
+    // Random(sourceData.bladeIndexPerTri, 352229 * sourceData.triangleIndex)
+    // );
+    // float total = w.x + w.y + w.z;
+    // w /= total;
+    
+    
+    // float r, s;
+    float r = Random(sourceData.bladeIndexPerTri * sourceData.triangleIndex);
+    float s = Random(sourceData.bladeIndexPerTri * 204623 * sourceData.triangleIndex);
+
+
+    if ((r + s) > 1)
+    {
+        r = 1.0 - r;
+        s = 1.0 - s;
+    }
+    
+    
+    float3 ab = b.position - a.position;
+    float3 ac = c.position - a.position;
+    GrassBladeInstanceData instanceData = (GrassBladeInstanceData)0;
+    instanceData.batchIndex = 0;
+    instanceData.normalWS = float3(0.0, 1.0, 0.0);
+    instanceData.positionWS =  a.position + (ab * r) + (ac * s);
+    // instanceData.positionWS =  a.position * w.x + b.position * w.y + c.position * w.z;
+
+    // instanceData.positionWS =  a.position + (ab * r) + (ac * s);;
+    _GrassInstanceData.Append(instanceData);
+
+}
